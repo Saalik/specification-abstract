@@ -1,0 +1,86 @@
+% -*-mode: latex; coding: utf-8-unix -*-
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+%
+% user-modifiable options
+%
+\usepackage{leading} \leading{6mm} % extra space between lines
+
+% \usepackage[francais,UKenglish]{babel}    % last one is default language
+\usepackage[a4paper]{geometry}
+% \usepackage{lmodern} %% Vector fonts
+%
+% Font and appearance: do not change
+%
+% \usepackage{aeguill} %% French guillemets with T1
+\usepackage{amsfonts,amsmath,amssymb} %% Additional math chars
+\usepackage{eurosym} %% \euro symbol
+\usepackage[T1]{fontenc} %% Vector fonts
+\usepackage[babel]{microtype} % load microtype after babel, inputenc, and font-changing packages
+% \usepackage{flushend}	% balanced last page in 2-col formatting
+%
+% Useful packages.  Optional.
+%
+\usepackage{graphicx}
+\usepackage[numbers,square,sort&compress]{natbib}
+\usepackage[defblank]{paralist} % inline lists
+\usepackage{parskip} \parskip=1ex plus 5pt minus 1pt \parindent=4ex %% indent paragraphs
+\usepackage[obeyspaces]{url} \urlstyle{sf} %% URLs 
+% \usepackage[verbatim]{svn-multi}
+\usepackage{xcolor}
+\usepackage{xspace}
+\usepackage{hyperref}  %% hyperlinks in PDF (must be last package loaded)
+    \newcommand{\hhref}[2]{\href{#2}{#1}} %{text}{URL}
+
+% \documentclass[11pt]{article}
+% \usepackage{inputenc}
+% \usepackage{amssymb}
+% \usepackage{graphicx}
+% \usepackage{xcolor}
+
+\newcommand\todo[1]{\textcolor{blue}{(TODO: #1)}}
+\newcommand{\commentaire}[2][fromWhom?]{{
+  \color{magenta}{\bfseries\sffamily\scriptsize$\triangleright$(#1:) #2$\triangleleft$}
+}}
+
+
+\begin{document}
+\author{Saalik Hatia}
+\title{Specification of persistent storage for a TCC database}
+\date\today
+\maketitle
+
+\section{Abstract}
+
+Large-scale application are typically built on top of geo-distributed
+databases running on multiple datacenters (DCs) situated around the
+globe.
+Network failures are unavoidable, but in most internet services,
+availability is not negotiable; in this context, the CAP theorem proves
+that it is impossible to provide both availability and strong
+consistency at the same time.
+Sacrificing strong consistency, exposes developpers to complex anomalies
+that are complex to build against.
+
+AntidoteDB is a database designed for geo-replication.
+As it aims to provide high availability with the strongest possible
+consistency model, it guarantees Transactional Causal Consistency (TCC)
+and supports CRDTs.
+TCC means that: (1) if one update happens before another, they will be
+observed in the same order (causal consistency), and (2) updates in the
+same transaction are observed all-or-nothing.
+
+In AntidoteDB, the database is persisted as a journal of operations.
+In the current implementation, the journal grows without bound.
+The main objective of this work is to specify a mechanism for
+pruning the journal safely, by storing recent checkpoints.
+This will enable faster reads and crash recovery.
+A secondary objective is to be able to use multiple storage backends,
+including legacy databases or file systems without change to their
+native format.
+
+
+
+\url{https://saalik.github.io/sharedfiles/specification.pdf}
+
+\end{document}
