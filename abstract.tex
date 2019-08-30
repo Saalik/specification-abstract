@@ -52,34 +52,28 @@
 
 \section{Abstract}
 
-Large-scale application are typically built on top of geo-distributed
-databases running on multiple datacenters (DCs) situated around the
-globe.
-Network failures are unavoidable, but in most internet services,
-availability is not negotiable; in this context, the CAP theorem proves
+Large-scale applications are typically built on top of geo-distributed
+databases running in multiple datacenters (DCs) located around the
+globe. As network failures are unavoidable, the CAP theorem proves
 that it is impossible to provide both availability and strong
 consistency at the same time.
-Sacrificing strong consistency, exposes developpers to complex anomalies
-that are complex to build against.
 
-AntidoteDB is a database designed for geo-replication.
-As it aims to provide high availability with the strongest possible
-consistency model, it guarantees Transactional Causal Consistency (TCC)
-and supports CRDTs.
-TCC means that: (1) if one update happens before another, they will be
+Transactional Causal Consistency (TCC) is a transactionnal model that provides 
+availability with the strongest possible consistency model. 
+TCC means that: 
+(1) if one update happens before another, they will be
 observed in the same order (causal consistency), and (2) updates in the
 same transaction are observed all-or-nothing.
 
-In AntidoteDB, the database is persisted as a journal of operations.
-In the current implementation, the journal grows without bound.
-The main objective of this work is to specify a mechanism for
-pruning the journal safely, by storing recent checkpoints.
-This will enable faster reads and crash recovery.
-A secondary objective is to be able to use multiple storage backends,
-including legacy databases or file systems without change to their
-native format.
+In a database implementing TCC, data is persisted as a journal of operations.
+This journal must be pruned or it will grow without bound.
+In order to do so safely, the database needs to safely store 
+checkpoints.
+The specification of this mechanism must ensure that checkpoints are a TCC
+cut of the data store, and that all updates that are truncated are available
+through a checkpoint store.
 
-
+The objective of this work is to present this specification.
 
 \url{https://saalik.github.io/sharedfiles/specification.pdf}
 
