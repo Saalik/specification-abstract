@@ -52,42 +52,131 @@
 
 \begin{abstract}
 
-  Large-scale application are typically built on top of geo-distributed
-  databases running on multiple datacenters (DCs) situated around the
-  globe.
-  Network failures are unavoidable, but in most internet services,
-  availability is required; however, the CAP theorem proves
-  that it is impossible to provide both availability and strong
-  consistency at the same time.
-  Sacrificing strong consistency, exposes developpers to complex anomalies
-  that are hard to build against.
+  % Large-scale application are typically built on top of geo-distributed
+  % databases running on multiple datacenters (DCs) situated around the
+  % globe.
+  % Network failures are unavoidable, but in most internet services,
+  % availability is required; however, the CAP theorem proves
+  % that it is impossible to provide both availability and strong
+  % consistency at the same time.
+  % Sacrificing strong consistency, exposes developpers to complex anomalies
+  % that are hard to build against.
   
-  AntidoteDB is a database designed for geo-replication.
-  It aims to provide high availability with the strongest possible
-  consistency model, it guarantees Transactional Causal Consistency (TCC)
-  and supports CRDTs.
-  TCC means that: (1) if one update happens before another, they will be
-  observed in the same order (causal consistency), and (2) updates in the
-  same transaction are observed in all-or-nothing fashion.
-  
-  In AntidoteDB, the database is persisted as a journal of operations.
-  In the current implementation, the journal grows without bound.
+  Checkpointing is a technique that is used in distributed 
+  systems to help tolerate failures and speed up recovery for years.
+  In AntidoteDB, a database that is geo-replicated and where data is 
+  persisted in the form of a journal of operations, checkpointing is hard.
+
+  The way AntidoteDB construct an object, is by reading all the updates 
+  made on the object to create a version.
+  This method allow the implementation of Multiversion concurrency
+  control (MVCC) which enable multiple version of the same object to exist
+  concurrently by reading the relevant operations.
+  Making every update ever made an essential information to the database.
+
+  In every datacenter (DC) data is sharded between several nodes called shards.
+  Each shard handles a portion of the keyspace in the database thus having 
+  each a journal of operations.
+  All these updates at a DC are totally ordered whereas 
+  updates at different locations are partially ordered. 
+  Each DC is a full replica of the database and has an identical number of 
+  shard and data can be updated at each location.
+
+  The combination of multiple journals independently updated at different 
+  locations, MVCC and partial order between DCs makes checkpointing and 
+  truncation a challenge.
+
   The main objective of this work is to specify a mechanism for
   pruning the journal safely, by storing recent checkpoints.
-  This will enable faster reads and crash recovery.
-  A secondary objective is to be able to use multiple storage backends,
-  including legacy databases or file systems without change to their
-  native format.
 
-  To enable pruning we need to keep track of the overall state of the database.
-  With this in mind we study the design and properties of the current
-  architecture.
-  Using information at our disposal we maintain states to allow us
-  to keep track of the local state of the datacenter first.
-  Using communication between datacenters we are able to infer the 
-  global state of our system. 
-  Once we have these states we use them to characterise the operations and 
-  correctness of the system using invariants.
+  In each DC there is one journal per shard containing local updates, 
+  each of these updates are sent to its counterpart in other DCs.
+  Upon reception those updates remote DCs log them into a journal that 
+  contains updates received from that location.
+  Considering this at a single DC the number of journals amounts to the
+  number of shards multiplied by the number of datacenters i.e. a replica.
+  
+  These journals grow without bound and in order to avoid storage issues 
+  we need to truncate them.
+  Before being able to truncate the journals safely, checkpoints need to be 
+  created and stored durably.
+
+  To properly choose a checkpointing cut we need to keep track
+  of stateq throughout the multiple shards and further, multiple DCs.
+  Updates can have dependencies in other shards, by being causally dependent or
+  they are part of the same transaction, but can also come from remote DCs 
+  making them present in replicated journals.
+
+  First, we keep track of normal operations in the database.
+  The persistent operations, the committed and in-flight transactions.
+  By adding tracking of communication between shards in a datacenter, 
+  and datacenters between them it allow us to create consistent cuts 
+  that represent the state of the database through them.
+  One of them represent the point of safety in a datacenter called 
+  DC-wide causal safe point (DCSf) which ensures that all the updates 
+  that are part of this cut are safe to read at a DC.
+  
+  Once we defined all these cuts our next focus is on interactions
+  between all the modules that constitutes the system.
+  To take the DCSf as an example it used to ensure that no client
+  will read an transaction that is not safe.
+  In this case for exemple the call fails and a signal is sent to the
+  module responsable for flushing information to the disk.
+  Using similar information we specify and write down the invariants 
+  to ensures the system operates safely and is correct.
+  To ensure correctness we will identify the invariants of each individual 
+  component, the global nvariants and link them together. 
+  Followed by writing the corresponding pseudo-code and formally verify it. 
+  And finally implement and validate through experimentation.
+  
+  
+  % AntidoteDB is a database designed for geo-replication.
+  % It aims to provide high availability with the strongest possible
+  % consistency model, it guarantees Transactional Causal Consistency (TCC)
+  % and supports CRDTs.
+  % TCC means that: (1) if one update happens before another, they will be
+  % observed in the same order (causal consistency), and (2) updates in the
+  % same transaction are observed in all-or-nothing fashion.
+  
+  % In AntidoteDB, the database is persisted as a journal of operations.
+  % In the current implementation, the journal grows without bound.
+  % The main objective of this work is to specify a mechanism for
+  % pruning the journal safely, by storing recent checkpoints.
+  
+  % Data is sharded, each shard is responsible for a portion of the 
+  % keyspace.
+  % The way transactions are handled by the database is by contacting
+  % each shard concerned by the operations in them.
+  % Each shard in a DC is replicated to all other DCs. 
+  % All updates that originate in some DC are sent asynchronously to the
+  % corresponding shards in other DCs.
+  % Making it a local update journal and replicated journals from every
+  % miror shard in other DCs.
+
+  % In order to properly choose a checkpointing cut we need to keep track
+  % of the state throughout multiple shards and further, multiple DCs.
+  % Because an update can have dependencies in other shards journal.
+
+  % We use consistent cuts to represent states of durability and all the 
+  % running and committed transactions. 
+  % We build upon them to find a safe cut called DCSf that represent the 
+  % safety point from which transaction can read from.  
+  
+  % A secondary objective is to be able to use multiple storage backends,
+  % including legacy databases or file systems without change to their
+  % native format.
+
+  
+
+  % To enable pruning we need to keep track of the overall state of the database.
+  % With this in mind we study the design and properties of the current
+  % architecture.
+  % Using information at our disposal we maintain states to allow us
+  % to keep track of the local state of the datacenter first.
+  % Using communication between datacenters we are able to infer the 
+  % global state of our system. 
+  % Once we have these states we use them to characterise the operations and 
+  % correctness of the system using invariants.
 
   
 
