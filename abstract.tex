@@ -143,15 +143,16 @@
   In our design the database is composed of three main components, Cache, 
   Journal and Checkpoint Store.
   The Journal is the logical representation of all the journals in each shard.
-  The Checkpoint Store contains the checkpoint, we assume it is a sequentially
+  The Checkpoint Store contains the checkpoints, we assume it is a sequentially
   consistent store.
-  Finally the Cache is responsible for materializing object states from the 
-  Journal.
+  And finally the Cache that is responsible for materializing object
+  states from the Journal.
   To ensure correctness of interactions between these components
   we will identify the invariants of every interaction, 
-  the global system invariants using the maintained cuts. 
+  the global system invariants using defined policies, different 
+  consistent cuts. 
 
-  The final step will be by writing the corresponding pseudo-code 
+  The next step will be writing the corresponding pseudo-code 
   and formally verify it. 
   And finally implement and validate through experimentation.
   
