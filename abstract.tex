@@ -62,71 +62,97 @@
   % Sacrificing strong consistency, exposes developpers to complex anomalies
   % that are hard to build against.
   
-  Checkpointing is a technique that is used in distributed 
-  systems to help tolerate failures and speed up recovery for years.
-  In AntidoteDB, a database that is geo-replicated and where data is 
-  persisted in the form of a journal of operations, checkpointing is hard.
+  % Checkpointing is a technique that is used in distributed 
+  % systems to help tolerate failures and speed up recovery for years.
+  % Distributed systems uses geo-replication to provide high availability and achieve 
+  % low latency for the end user.
+  % In each DC there is one journal per shard containing local updates, 
+  % each of these updates are sent to its counterpart in other DCs.
+  % Upon reception those updates remote DCs log them into a journal that 
+  % contains updates received from that location.
+  % Considering this at a single DC the number of journals amounts to the
+  % number of shards multiplied by the number of datacenters i.e. a replica.
+  
+  % These journals grow without bound and in order to avoid storage issues 
+  % we need to truncate them.
+  % Before being able to truncate the journals safely, checkpoints need to be 
+  % created and stored durably.
 
-  The way AntidoteDB construct an object, is by reading all the updates 
-  made on the object to create a version.
-  This method allow the implementation of Multiversion concurrency
-  control (MVCC) which enable multiple version of the same object to exist
+  AntidoteDB is database where data is persisted in the form of 
+  a journal of operations. 
+  As time goes this journal grows without bound impacting storage, access time and 
+  recovery time.
+  To address these shortcomings we propose a mechanism to prune the journal by 
+  checkpointing essential information.
+  Checkpoints should be consistent, made from stable updates at a point
+  in time where concurrency information is no longer essential.
+  % However AntidoteDB's current design makes checkpointing and pruning a challenge.
+  
+  Construction of an object's version in AntidoteDB, is done by reading all the updates made on the object.
+  This method allows the implementation of multiversion concurrency
+  control (MVCC) which enables multiple version of the same object to exist
   concurrently by reading the relevant operations.
-  Making every update ever made an essential information to the database.
+  The consequence of building objects this way, is that each and every operation 
+  have to be conserved forever.
 
-  In every datacenter (DC) data is sharded between several nodes called shards.
-  Each shard handles a portion of the keyspace in the database thus having 
-  each a journal of operations.
-  All these updates at a DC are totally ordered whereas 
-  updates at different locations are partially ordered. 
+  AntidoteDB replicates data between different datacenters (DC). 
+  Within a DC, data is sharded between several nodes called shards.
+  Each shard handles a portion of the keyspace and maintain its own
+  journal of operations. 
   Each DC is a full replica of the database and has an identical number of 
-  shard and data can be updated at each location.
+  shards where data can be updated locally. 
+  These updates are totally ordered within each DC.
+  When data is propagated from one datacenter to another it creates a 
+  partial order between updates from different locations.
 
   The combination of multiple journals independently updated at different 
-  locations, MVCC and partial order between DCs makes checkpointing and 
+  locations, MVCC and partial ordering between DCs makes checkpointing and 
   truncation a challenge.
 
   The main objective of this work is to specify a mechanism for
-  pruning the journal safely, by storing recent checkpoints.
+  pruning the journal safely, by storing consistent checkpoints.
 
-  In each DC there is one journal per shard containing local updates, 
-  each of these updates are sent to its counterpart in other DCs.
-  Upon reception those updates remote DCs log them into a journal that 
-  contains updates received from that location.
-  Considering this at a single DC the number of journals amounts to the
-  number of shards multiplied by the number of datacenters i.e. a replica.
+  To properly choose a checkpointing cut, a set of point, one per log, 
+  that represent a state of data at this point in time.
+  We need to keep track of information throughout multiple shards 
+  and further, multiple DCs.
+  For every update there are three things to keep track of,
+  causal dependencies in local shards, others coming from 
+  remote DCs and finally updates that are part of the same
+  transaction.
+  If an update is part of a cut all of its dependencies need to be part of the 
+  cut.
+
+  First, we keep track of local operations in the database
+  by tracking transactions, that are committed or in-flight.
+  % Persistent operations, the committed and in-flight transactions.
+  Then keep track of communication between shards in a DC, 
+  and between DCs in order to track causal dependencies. 
+  Using all this information we create intermediate conssitent cuts to 
+  arrive at a point where: (1)updates are safe, (1) updates are stable,
+  (3) there are no in-flight transactions, meaning concurrency information
+  is no longer essential enabling the creation of a sequentially consistent
+  snapshot.
+  This sequential snapshot is then stored in a datastore called Checkpoint Store.
+
+  % them it allow us to create consistent cuts 
+  % that represent the state of the database through them.
+  % One of them represent the point of safety in a datacenter called 
+  % DC-wide causal safe point (DCSf) which ensures that all the updates 
   
-  These journals grow without bound and in order to avoid storage issues 
-  we need to truncate them.
-  Before being able to truncate the journals safely, checkpoints need to be 
-  created and stored durably.
+  In our design the database is composed of three main components, Cache, 
+  Journal and Checkpoint Store.
+  The Journal is the logical representation of all the journals in each shard.
+  The Checkpoint Store contains the checkpoint, we assume it is a sequentially
+  consistent store.
+  Finally the Cache is responsible for materializing object states from the 
+  Journal.
+  To ensure correctness of interactions between these components
+  we will identify the invariants of every interaction, 
+  the global system invariants using the maintained cuts. 
 
-  To properly choose a checkpointing cut we need to keep track
-  of stateq throughout the multiple shards and further, multiple DCs.
-  Updates can have dependencies in other shards, by being causally dependent or
-  they are part of the same transaction, but can also come from remote DCs 
-  making them present in replicated journals.
-
-  First, we keep track of normal operations in the database.
-  The persistent operations, the committed and in-flight transactions.
-  By adding tracking of communication between shards in a datacenter, 
-  and datacenters between them it allow us to create consistent cuts 
-  that represent the state of the database through them.
-  One of them represent the point of safety in a datacenter called 
-  DC-wide causal safe point (DCSf) which ensures that all the updates 
-  that are part of this cut are safe to read at a DC.
-  
-  Once we defined all these cuts our next focus is on interactions
-  between all the modules that constitutes the system.
-  To take the DCSf as an example it used to ensure that no client
-  will read an transaction that is not safe.
-  In this case for exemple the call fails and a signal is sent to the
-  module responsable for flushing information to the disk.
-  Using similar information we specify and write down the invariants 
-  to ensures the system operates safely and is correct.
-  To ensure correctness we will identify the invariants of each individual 
-  component, the global nvariants and link them together. 
-  Followed by writing the corresponding pseudo-code and formally verify it. 
+  The final step will be by writing the corresponding pseudo-code 
+  and formally verify it. 
   And finally implement and validate through experimentation.
   
   
